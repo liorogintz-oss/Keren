@@ -250,9 +250,89 @@ function genCompare(level) {
   };
 }
 
+// ---------- מחוללי בונוס ----------
+
+function genSequence(level) {
+  let terms;
+  if (level === 1) {
+    const step = pick([1, 2, 5, 10]);
+    const start = rand(0, 10) * (step === 1 ? 1 : step);
+    terms = [0, 1, 2, 3, 4].map(i => start + i * step);
+  } else if (level === 2) {
+    const step = rand(2, 10) * (Math.random() < 0.5 ? -1 : 1);
+    const start = step > 0 ? rand(0, 40) : rand(4 * -step, 100);
+    terms = [0, 1, 2, 3, 4].map(i => start + i * step);
+  } else if (Math.random() < 0.5) { // הכפלה
+    const start = rand(1, 5);
+    terms = [0, 1, 2, 3, 4].map(i => start * 2 ** i);
+  } else { // הפרש גדל: +1, +2, +3...
+    const start = rand(1, 20);
+    terms = [start];
+    for (let i = 1; i < 5; i++) terms.push(terms[i - 1] + i);
+  }
+  const answer = terms.pop();
+  return {
+    type: 'number',
+    prompt: `<p class="q-text">מה המספר הבא בסדרה?</p><p class="expr sequence" dir="ltr">${terms.join(', ')}, <span class="qmark">?</span></p>`,
+    speak: `מה המספר הבא בסדרה? ${terms.join(', ')}`,
+    answer,
+    answerLabel: String(answer)
+  };
+}
+
+function genWordProblem(level) {
+  const p = pick(PROBLEM_NAMES);
+  const item = pick(PROBLEM_ITEMS);
+  const m = p.g === 'm';
+  const him = m ? 'לו' : 'לה';
+  let text, answer;
+  const kind = level === 1 ? pick(['add', 'sub']) : level === 2 ? pick(['add', 'sub', 'mul']) : pick(['mul', 'two-step']);
+  if (kind === 'add') {
+    const max = level === 1 ? 10 : 20;
+    const a = rand(1, max - 1), b = rand(1, max - a);
+    text = `ל${p.name} יש ${a} ${item}. ${m ? 'הוא קיבל' : 'היא קיבלה'} עוד ${b}. כמה ${item} יש ${him} עכשיו?`;
+    answer = a + b;
+  } else if (kind === 'sub') {
+    const a = rand(3, level === 1 ? 10 : 20), b = rand(1, a - 1);
+    text = `ל${p.name} היו ${a} ${item}. ${m ? 'הוא נתן' : 'היא נתנה'} ${b} לחברים. כמה ${item} נשארו ${him}?`;
+    answer = a - b;
+  } else if (kind === 'mul') {
+    const a = rand(2, level === 2 ? 5 : 9), b = rand(2, level === 2 ? 5 : 10);
+    text = `${p.name} ${m ? 'קנה' : 'קנתה'} ${a} חבילות. בכל חבילה יש ${b} ${item}. כמה ${item} ${m ? 'קנה' : 'קנתה'} בסך הכול?`;
+    answer = a * b;
+  } else {
+    const a = rand(10, 40), b = rand(5, 30), c = rand(5, a + b - 1);
+    text = `ל${p.name} היו ${a} ${item}. ${m ? 'הוא קיבל' : 'היא קיבלה'} עוד ${b}, ואחר כך ${m ? 'נתן' : 'נתנה'} ${c} ${m ? 'לאחיו' : 'לאחותה'}. כמה ${item} יש ${him} עכשיו?`;
+    answer = a + b - c;
+  }
+  return {
+    type: 'number',
+    prompt: `<div class="reading-text">${esc(text)}</div>`,
+    speak: text,
+    answer,
+    answerLabel: String(answer)
+  };
+}
+
+function genMissingWord(level) {
+  const exact = MISSING_WORD.filter(r => r.level === level);
+  const item = pick(exact.length ? exact : MISSING_WORD);
+  const html = esc(item.text).replace('___', '<span class="blank wide">?</span>');
+  return {
+    type: 'choice',
+    prompt: `<div class="reading-text">${html}</div><p class="q-text">איזו מילה חסרה?</p>`,
+    speak: item.text.replace('___', 'משהו') + ' איזו מילה חסרה?',
+    options: shuffle(item.options).map(o => ({ label: o, value: o })),
+    optionClass: 'words',
+    answer: item.options[0],
+    answerLabel: item.options[0]
+  };
+}
+
 const SUBJECTS = [
   { id: 'reading', title: 'קריאה וכתיבה', icon: '📚' },
-  { id: 'math', title: 'חשבון', icon: '🔢' }
+  { id: 'math', title: 'חשבון', icon: '🔢' },
+  { id: 'bonus', title: 'בונוס', icon: '🎁' }
 ];
 
 const ACTIVITIES = [
@@ -263,10 +343,29 @@ const ACTIVITIES = [
   { id: 'addition', subject: 'math', icon: '➕', title: 'חיבור', desc: 'עד 10, עד 20 ועד 100', maxLevel: 4, generate: genAddition },
   { id: 'subtraction', subject: 'math', icon: '➖', title: 'חיסור', desc: 'עד 10, עד 20 ועד 100', maxLevel: 4, generate: genSubtraction },
   { id: 'multiplication', subject: 'math', icon: '✖️', title: 'לוח הכפל', desc: 'תרגול עובדות כפל', maxLevel: 3, generate: genMultiplication },
-  { id: 'compare', subject: 'math', icon: '⚖️', title: 'השוואת מספרים', desc: 'גדול או קטן?', maxLevel: 3, generate: genCompare }
+  { id: 'compare', subject: 'math', icon: '⚖️', title: 'השוואת מספרים', desc: 'גדול או קטן?', maxLevel: 3, generate: genCompare },
+  // תכני העשרה – נפתחים לכל תלמיד/ה בנפרד על ידי המורה
+  { id: 'memory', subject: 'bonus', icon: '🃏', title: 'משחק זיכרון', desc: 'מתאימים מילה לתמונה', maxLevel: 3, game: true },
+  { id: 'missing-word', subject: 'bonus', icon: '📝', title: 'משפט חסר', desc: 'איזו מילה משלימה את המשפט?', maxLevel: 3, generate: genMissingWord },
+  { id: 'sequence', subject: 'bonus', icon: '🔁', title: 'סדרות מספרים', desc: 'מגלים את החוק וממשיכים', maxLevel: 3, generate: genSequence },
+  { id: 'word-problem', subject: 'bonus', icon: '💡', title: 'בעיות מילוליות', desc: 'חשבון מתוך סיפור', maxLevel: 3, generate: genWordProblem }
 ];
 
 const findActivity = id => ACTIVITIES.find(a => a.id === id);
+const BONUS_ACTIVITIES = ACTIVITIES.filter(a => a.subject === 'bonus');
+const CORE_ACTIVITIES = ACTIVITIES.filter(a => a.subject !== 'bonus');
+const isUnlocked = (student, activityId) => (student.unlocked || []).includes(activityId);
+const MEMORY_PAIRS = { 1: 4, 2: 6, 3: 8 };
+
+// אחוז ההצלחה בסבבים האחרונים של התרגול הרגיל – עוזר למורה להחליט על פתיחת בונוס
+function recentSuccess(student, count = 5) {
+  const coreIds = CORE_ACTIVITIES.map(a => a.id);
+  const recent = (student.sessions || []).filter(x => coreIds.includes(x.activity)).slice(-count);
+  if (!recent.length) return null;
+  const correct = recent.reduce((n, x) => n + x.correct, 0);
+  const total = recent.reduce((n, x) => n + x.total, 0);
+  return { rounds: recent.length, pct: percent(correct, total) };
+}
 
 // ---------- ניתוב ותצוגה ----------
 
@@ -283,7 +382,7 @@ function go(name, params = {}) {
 }
 
 function render() {
-  const views = { home: renderHome, student: renderStudent, report: renderReport, play: renderPlay, summary: renderSummary };
+  const views = { home: renderHome, student: renderStudent, report: renderReport, play: renderPlay, memory: renderMemory, summary: renderSummary };
   app.innerHTML = (views[view.name] || renderHome)();
 }
 
@@ -349,6 +448,13 @@ function renderStudent() {
   ).join('');
   const cards = ACTIVITIES.filter(a => a.subject === subject).map(a => {
     const p = getProgress(s, a.id);
+    if (a.subject === 'bonus' && !isUnlocked(s, a.id)) {
+      return `<div class="card activity-card locked" aria-disabled="true">
+        <span class="activity-icon">${a.icon}</span>
+        <strong>${a.title}</strong>
+        <span class="muted">🔒 נעול</span>
+      </div>`;
+    }
     return `<button class="card activity-card" data-action="start" data-activity="${a.id}">
       <span class="activity-icon">${a.icon}</span>
       <strong>${a.title}</strong>
@@ -356,8 +462,13 @@ function renderStudent() {
       ${levelStars(p.level, a.maxLevel)}
     </button>`;
   }).join('');
+  const anyUnlocked = BONUS_ACTIVITIES.some(a => isUnlocked(s, a.id));
+  const bonusNote = subject !== 'bonus' ? '' : anyUnlocked
+    ? '<p class="bonus-note">🎉 כל הכבוד! פתחת תכני בונוס. בהצלחה!</p>'
+    : '<p class="bonus-note">🔒 תכני הבונוס עוד נעולים. המשיכו להתאמן, והמורה תפתח אותם כשתתקדמו!</p>';
   return `${topbar(`שלום ${esc(s.name)}! ${s.avatar}`, 'home')}
     <nav class="tabs">${tabs}</nav>
+    ${bonusNote}
     <section class="grid">${cards}</section>`;
 }
 
@@ -365,11 +476,11 @@ function renderReport() {
   const s = findStudent(view.id);
   if (!s) return renderHome();
   const sessions = s.sessions || [];
-  const rows = ACTIVITIES.map(a => {
+  const rows = ACTIVITIES.filter(a => a.subject !== 'bonus' || isUnlocked(s, a.id) || getProgress(s, a.id).attempts).map(a => {
     const p = getProgress(s, a.id);
     const pct = percent(p.correct, p.attempts);
     return `<tr>
-      <td>${a.icon} ${a.title}</td>
+      <td>${a.icon} ${a.title}${a.subject === 'bonus' ? ' <span class="tag">בונוס</span>' : ''}</td>
       <td>${levelStars(p.level, a.maxLevel)}</td>
       <td>${p.attempts}</td>
       <td><div class="bar" title="${pct}%"><span style="width:${pct}%" class="${pct >= 80 ? 'good' : pct >= 50 ? 'mid' : 'low'}"></span></div> ${p.attempts ? pct + '%' : '—'}</td>
@@ -401,6 +512,7 @@ function renderReport() {
       <tbody>${rows}</tbody>
     </table>
   </section>
+  ${renderBonusControl(s)}
   <section class="card">
     <h2>סבבים אחרונים</h2>
     ${recent ? `<table class="table"><thead><tr><th>תאריך</th><th>תרגיל</th><th>נכונות</th><th>שלב</th></tr></thead><tbody>${recent}</tbody></table>` : '<p class="muted">עדיין אין סבבי תרגול.</p>'}
@@ -416,11 +528,118 @@ function renderReport() {
   </div>`;
 }
 
+function renderBonusControl(s) {
+  const success = recentSuccess(s);
+  let hint;
+  if (!success) hint = '<p class="muted">עדיין אין מספיק תרגול כדי להעריך התקדמות.</p>';
+  else if (success.pct >= 80) hint = `<p class="alert good">הצלחה של ${success.pct}% ב-${success.rounds} הסבבים האחרונים – מתקדם/ת יפה, אפשר לשקול לפתוח תכני בונוס.</p>`;
+  else hint = `<p class="muted">הצלחה של ${success.pct}% ב-${success.rounds} הסבבים האחרונים.</p>`;
+
+  const toggles = BONUS_ACTIVITIES.map(a => `<label class="switch-row">
+      <input type="checkbox" data-unlock="${a.id}" ${isUnlocked(s, a.id) ? 'checked' : ''}>
+      <span class="switch" aria-hidden="true"></span>
+      <span>${a.icon} ${a.title} <span class="muted">– ${a.desc}</span></span>
+    </label>`).join('');
+
+  return `<section class="card bonus-control no-print">
+    <h2>🎁 תכני העשרה ובונוס</h2>
+    <p class="muted">בחרו אילו תכנים לפתוח לתלמיד/ה. תכנים נעולים יופיעו אצלו/ה עם מנעול.</p>
+    ${hint}
+    <div class="switches">${toggles}</div>
+    <div class="row">
+      <button class="btn" data-action="unlock-all" data-id="${s.id}">פתיחת הכול</button>
+      <button class="btn" data-action="lock-all" data-id="${s.id}">נעילת הכול</button>
+    </div>
+  </section>`;
+}
+
 // ---------- סבב תרגול ----------
 
 function startRound(studentId, activityId) {
+  const act = findActivity(activityId);
+  // הגנה: תוכן בונוס נעול לא נפתח גם אם מנסים להגיע אליו ישירות
+  if (act.subject === 'bonus' && !isUnlocked(findStudent(studentId), activityId)) return;
   round = { studentId, activityId, index: 0, correct: 0, leveledUp: false };
-  nextQuestion();
+  if (act.game) startMemory();
+  else nextQuestion();
+}
+
+// ---------- משחק זיכרון ----------
+
+function startMemory() {
+  const s = findStudent(round.studentId);
+  const p = getProgress(s, round.activityId);
+  const words = shuffle(WORDS).slice(0, MEMORY_PAIRS[p.level]);
+  const cards = [];
+  words.forEach((w, k) => {
+    cards.push({ key: k, kind: 'emoji', label: w.emoji, word: w.word });
+    cards.push({ key: k, kind: 'word', label: w.word, word: w.word });
+  });
+  round.game = { cards: shuffle(cards), open: [], matched: [], moves: 0, pairs: words.length, busy: false };
+  go('memory');
+  setTimeout(() => speak('מצאו את הזוגות: תמונה ומילה'), 250);
+}
+
+function renderMemory() {
+  const act = findActivity(round.activityId);
+  const g = round.game;
+  const cards = g.cards.map((c, i) => {
+    const shown = g.open.includes(i) || g.matched.includes(c.key);
+    return `<button class="memory-card ${shown ? 'shown' : ''} ${g.matched.includes(c.key) ? 'matched' : ''} ${c.kind}"
+      data-action="flip" data-i="${i}" ${shown ? 'aria-pressed="true"' : ''}>${shown ? esc(c.label) : '❔'}</button>`;
+  }).join('');
+  return `<header class="topbar play-bar">
+      <button class="btn ghost" data-action="quit">✕ יציאה</button>
+      <div class="progress"><span style="width:${(g.matched.length / g.pairs) * 100}%"></span></div>
+      <span class="level-badge">${act.icon} שלב ${getProgress(findStudent(round.studentId), act.id).level}</span>
+    </header>
+    <section class="card question">
+      <p class="q-text">מצאו את הזוגות: תמונה ומילה</p>
+      <div class="memory-grid">${cards}</div>
+      <p class="muted">ניסיונות: ${g.moves}</p>
+    </section>`;
+}
+
+function flipCard(i) {
+  const g = round.game;
+  const c = g.cards[i];
+  if (g.busy || g.open.includes(i) || g.matched.includes(c.key)) return;
+  g.open.push(i);
+  if (c.kind === 'word') speak(c.word);
+  if (g.open.length < 2) { render(); return; }
+
+  g.moves++;
+  const [a, b] = g.open.map(k => g.cards[k]);
+  if (a.key === b.key) {
+    g.matched.push(a.key);
+    g.open = [];
+    render();
+    speak(pick(PRAISE));
+    if (g.matched.length === g.pairs) go.timer = setTimeout(finishMemory, 900);
+  } else {
+    g.busy = true;
+    render();
+    go.timer = setTimeout(() => { g.open = []; g.busy = false; render(); }, 1000);
+  }
+}
+
+function finishMemory() {
+  const s = findStudent(round.studentId);
+  const act = findActivity(round.activityId);
+  const p = getProgress(s, act.id);
+  const g = round.game;
+  // ניסיונות "מבוזבזים" מעבר למספר הזוגות קובעים את הכוכבים ואת השלב
+  const stars = g.moves <= g.pairs + 2 ? 3 : g.moves <= g.pairs * 2 ? 2 : 1;
+  p.attempts += g.moves;
+  p.correct += g.pairs;
+  if (stars === 3 && p.level < act.maxLevel) { p.level++; round.leveledUp = true; }
+  else if (stars === 1 && p.level > 1) p.level--;
+  round.stars = stars;
+  s.sessions = s.sessions || [];
+  s.sessions.push({ activity: act.id, date: Date.now(), correct: g.pairs, total: g.moves, level: p.level });
+  if (s.sessions.length > MAX_SESSIONS) s.sessions = s.sessions.slice(-MAX_SESSIONS);
+  save();
+  go('summary');
 }
 
 function nextQuestion() {
@@ -564,19 +783,22 @@ function renderSummary() {
   const s = findStudent(round.studentId);
   const act = findActivity(round.activityId);
   const pct = percent(round.correct, ROUND_LENGTH);
-  const stars = pct >= 90 ? 3 : pct >= 60 ? 2 : 1;
+  const stars = round.game ? round.stars : pct >= 90 ? 3 : pct >= 60 ? 2 : 1;
+  const result = round.game
+    ? `מצאת את כל <strong>${round.game.pairs}</strong> הזוגות ב-${round.game.moves} ניסיונות.`
+    : `ענית נכון על <strong>${round.correct}</strong> מתוך ${ROUND_LENGTH} שאלות בניסיון הראשון.`;
   const title = stars === 3 ? 'מדהים!' : stars === 2 ? 'עבודה טובה!' : 'כל הכבוד על המאמץ!';
   setTimeout(() => speak(title), 200);
   return `${topbar(act.title)}
   <section class="card summary">
     <div class="big-stars">${'⭐'.repeat(stars)}</div>
     <h2>${title}</h2>
-    <p>ענית נכון על <strong>${round.correct}</strong> מתוך ${ROUND_LENGTH} שאלות בניסיון הראשון.</p>
+    <p>${result}</p>
     ${round.leveledUp ? '<p class="alert good">עלית שלב בסבב הזה! 🎉</p>' : ''}
     <p>שלב נוכחי: ${levelStars(getProgress(s, act.id).level, act.maxLevel)}</p>
     <div class="row center">
       <button class="btn primary" data-action="again">עוד סבב</button>
-      <button class="btn" data-action="open-student" data-id="${s.id}">לתרגילים אחרים</button>
+      <button class="btn" data-action="open-student" data-id="${s.id}" data-subject="${act.subject}">לתרגילים אחרים</button>
     </div>
   </section>`;
 }
@@ -626,15 +848,18 @@ const actions = {
     if (!data.settings.sound && window.speechSynthesis) speechSynthesis.cancel();
     render();
   },
-  'open-student': el => go('student', { id: el.dataset.id }),
+  'open-student': el => go('student', { id: el.dataset.id, subject: el.dataset.subject }),
   'open-report': el => go('report', { id: el.dataset.id }),
   'subject': el => go('student', { id: view.id, subject: el.dataset.subject }),
   'start': el => startRound(view.id, el.dataset.activity),
   'again': () => startRound(round.studentId, round.activityId),
   'quit': () => {
-    if (round.index === 0 || confirm('לצאת מהסבב? ההתקדמות בשלבים נשמרה.')) go('student', { id: round.studentId, subject: findActivity(round.activityId).subject });
+    if ((round.index === 0 && !(round.game && round.game.moves)) || confirm('לצאת מהסבב? ההתקדמות בשלבים נשמרה.')) go('student', { id: round.studentId, subject: findActivity(round.activityId).subject });
   },
   'speak': () => speak(round.question.speak),
+  'flip': el => flipCard(Number(el.dataset.i)),
+  'unlock-all': el => setUnlocked(findStudent(el.dataset.id), BONUS_ACTIVITIES.map(a => a.id)),
+  'lock-all': el => setUnlocked(findStudent(el.dataset.id), []),
   'next': () => advance(),
   'choose': el => {
     if (round.done) return;
@@ -714,7 +939,25 @@ app.addEventListener('input', e => {
   }
 });
 
+function setUnlocked(student, ids) {
+  student.unlocked = ids;
+  save();
+  render();
+  toast(ids.length ? 'תכני הבונוס עודכנו' : 'כל תכני הבונוס ננעלו');
+}
+
 app.addEventListener('change', e => {
+  if (e.target.dataset.unlock && view.name === 'report') {
+    const s = findStudent(view.id);
+    const id = e.target.dataset.unlock;
+    const set = new Set(s.unlocked || []);
+    if (e.target.checked) set.add(id); else set.delete(id);
+    s.unlocked = [...set];
+    save();
+    const act = findActivity(id);
+    toast(`${act.title}: ${e.target.checked ? 'נפתח 🔓' : 'ננעל 🔒'}`);
+    return;
+  }
   if (e.target.id !== 'import-file' || !e.target.files[0]) return;
   const reader = new FileReader();
   reader.onload = () => {
